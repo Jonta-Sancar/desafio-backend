@@ -8,6 +8,7 @@ Este repositório contém a implementação proposta para o desafio de integraç
 - **MovementService** – camada de orquestração que recebe um payload consistente da API, enriquece com dados da conta (merchant/seller, dados bancários, currency, expirations), invoca o serviço da subadquirente, persiste os registros específicos e normaliza a resposta antes de devolvê-la ao cliente. Também calcula o saldo disponível (entradas - saídas) e bloqueia saques quando o valor solicitado excede o total disponível.
 - **Subadquirente Manager** – resolve dinamicamente a implementação correta com base no provider da conta. Cada serviço (`SubadqAService`, `SubadqBService`) conhece apenas seu formato específico, enquanto o resto da aplicação trabalha com o contrato genérico.
 - **Integração HTTP com os mocks oficiais** – as classes das subadquirentes utilizam o `Http` client do Laravel para chamar diretamente os endpoints fornecidos no documento do desafio (Postman), garantindo que os dados retornados pela API reflitam fielmente as simulações oficiais.
+- **Coleção Postman** – a documentação dos mocks está disponível [neste workspace](https://jonta-sancar-1034398.postman.co/workspace/Jonta-Sancar's-Workspace~8ea8ea69-e6d0-4ba2-8a21-d28723048003/request/50148459-d86c20f7-bb1f-4052-821d-36b265a58649?action=share&creator=50148459&ctx=documentation). Utilize-a como referência adicional dos payloads suportados.
 - **Webhooks simulados / reais** – o job `SimulateWebhookJob` dispara payloads semelhantes aos webhooks reais. Quando `SUBADQ_WEBHOOK_MODE=real`, basta configurar as URLs de `routes/api.php` para receber chamadas externas, pois o parser já está desacoplado.
 
 ## Arquitetura e Fluxos
@@ -128,7 +129,7 @@ php artisan serve
 php artisan queue:listen --tries=1   # segundo terminal (modo simulation)
 ```
 
-> **Importante:** as integrações de PIX consomem diretamente os mocks publicados no Postman. Ajuste `SUBADQA_BASE_URL` e `SUBADQB_BASE_URL` caso os endpoints mudem ou se desejar apontar para outros ambientes. Esses valores já estão definidos em `.env.example`.
+> **Importante:** em ambiente local/teste os serviços permanecem 100% mocados (sem chamar a internet). Apenas em produção (ou quando `APP_ENV=production`) as integrações consomem os endpoints do Postman definidos em `SUBADQA_BASE_URL` e `SUBADQB_BASE_URL`.
 
 ### Autenticação via Sanctum
 

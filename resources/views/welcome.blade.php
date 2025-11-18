@@ -316,6 +316,8 @@ JSON,
         .card p {
             margin: 0;
             color: rgba(255,255,255,0.85);
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
 
         .code-block {
@@ -466,7 +468,7 @@ JSON,
                     <article class="card">
                         <h3>Response</h3>
                         <div class="code-block">{{ $pixContract['response'] }}</div>
-                        <p>Independentemente da subadquirente, a API sempre retorna este formato, incluindo qrcode, location, status e dados do pagador. Os campos são obtidos diretamente dos mocks configurados via SUBADQA_BASE_URL/SUBADQB_BASE_URL.</p>
+                        <p>Independentemente da subadquirente, a API sempre retorna este formato, incluindo qrcode, location, status e dados do pagador. Em ambiente local/teste o payload é simulado internamente; em produção os dados vêm dos mocks Postman configurados via SUBADQA_BASE_URL/SUBADQB_BASE_URL.</p>
                     </article>
                 </div>
             </section>
@@ -482,7 +484,7 @@ JSON,
                     <article class="card">
                         <h3>Response</h3>
                         <div class="code-block">{{ $withdrawContract['response'] }}</div>
-                        <p>O MovementService converte as respostas específicas (PROCESSING, DONE etc.) para esta estrutura única, preservando as informações essenciais. Este payload reflete exatamente os dados fornecidos pelos mocks de saque.</p>
+                        <p>O MovementService converte as respostas específicas (PROCESSING, DONE etc.) para esta estrutura única, preservando as informações essenciais. Localmente o retorno é simulado; em produção ele replica os dados fornecidos pelos mocks de saque.</p>
                     </article>
                 </div>
             </section>
@@ -539,6 +541,23 @@ JSON,
                             &nbsp;&nbsp;-d '{"account_id":1,"amount":150.75,"payer":{"name":"Fulano","cpf_cnpj":"12345678900"}}'
                         </div>
                         <p>Use o mesmo token para testar saques ou buscar saldo. No Postman, configure o Authorization como Bearer Token e cole o valor gerado.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>Documentação Postman</h2>
+                <div class="card-grid">
+                    <article class="card">
+                        <h3>Workspace oficial</h3>
+                        <p>
+                            Consulte todos os endpoints e payloads no workspace compartilhado pelo desafio.
+                            Útil para validar headers como <code>x-mock-response-name</code> e visualizar exemplos completos.
+                        </p>
+                        <a href="https://jonta-sancar-1034398.postman.co/workspace/Jonta-Sancar's-Workspace~8ea8ea69-e6d0-4ba2-8a21-d28723048003/request/50148459-d86c20f7-bb1f-4052-821d-36b265a58649?action=share&amp;creator=50148459&amp;ctx=documentation"
+                           target="_blank" rel="noreferrer" class="copy-btn">
+                            Abrir no Postman
+                        </a>
                     </article>
                 </div>
             </section>

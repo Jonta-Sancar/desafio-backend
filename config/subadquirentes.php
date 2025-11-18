@@ -15,13 +15,13 @@ return [
             'pix' => [
                 'path' => '/pix/create',
                 'headers' => [
-                    'x-mock-response-name' => 'SUCESSO_PIX',
+                    'x-mock-response-name' => '[SUCESSO_PIX] pix_create',
                 ],
             ],
             'withdraw' => [
                 'path' => '/withdraw',
                 'headers' => [
-                    'x-mock-response-name' => 'SUCESSO_WD',
+                    'x-mock-response-name' => '[SUCESSO_WD] withdraw',
                 ],
             ],
         ],
@@ -30,13 +30,13 @@ return [
             'pix' => [
                 'path' => '/pix/create',
                 'headers' => [
-                    'x-mock-response-name' => 'SUCESSO_PIX',
+                    'x-mock-response-name' => '[SUCESSO_PIX] pix_create',
                 ],
             ],
             'withdraw' => [
                 'path' => '/withdraw',
                 'headers' => [
-                    'x-mock-response-name' => 'SUCESSO_WD',
+                    'x-mock-response-name' => '[SUCESSO_WD] withdraw',
                 ],
             ],
         ],

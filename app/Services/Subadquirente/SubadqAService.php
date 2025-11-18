@@ -180,7 +180,7 @@ class SubadqAService implements SubadquirenteInterface
 
     protected function shouldFakeRequests(): bool
     {
-        return app()->environment('testing');
+        return app()->environment(['local', 'testing']);
     }
 
     protected function fakeResponse(string $provider, string $channel, array $payload): array
