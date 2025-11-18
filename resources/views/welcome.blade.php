@@ -15,7 +15,11 @@
         ],
         [
             'title' => 'Servico de movimentacoes padronizado',
-            'details' => 'MovementService normaliza os dados que entram na API, injeta merchant/seller/banco a partir da conta e traduz a resposta das subadquirentes para um formato unico.'
+            'details' => 'MovementService normaliza os dados que entram na API, injeta merchant/seller/banco a partir da conta, calcula saldo disponível (entradas - saídas) e traduz a resposta das subadquirentes para um formato único.'
+        ],
+        [
+            'title' => 'Requisicoes HTTP aos mocks Postman',
+            'details' => 'SubadqA e SubadqB utilizam o Http client do Laravel para chamar as URLs documentadas no desafio (Postman). Os endpoints podem ser configurados via SUBADQA_BASE_URL e SUBADQB_BASE_URL no .env.'
         ],
         [
             'title' => 'Gerenciador de subadquirentes',
@@ -43,6 +47,12 @@
             'path' => '/api/withdraw',
             'request' => '{"account_id": 1, "amount": 320.10, "bank_account": {"bank_code":"001","agencia":"1234","conta":"00012345","type":"checking"}}',
             'response' => '{"withdraw_id":"WD...","transaction_id":"SP...","amount":320.10,"status":"DONE","movement_id":11}'
+        ],
+        [
+            'method' => 'GET',
+            'path' => '/api/accounts/{account}/balance',
+            'request' => 'N/A',
+            'response' => '{"account_id":1,"balance":200.50}'
         ],
     ];
 
@@ -456,7 +466,7 @@ JSON,
                     <article class="card">
                         <h3>Response</h3>
                         <div class="code-block">{{ $pixContract['response'] }}</div>
-                        <p>Independentemente da subadquirente, a API sempre retorna este formato, incluindo qrcode, location, status e dados do pagador.</p>
+                        <p>Independentemente da subadquirente, a API sempre retorna este formato, incluindo qrcode, location, status e dados do pagador. Os campos são obtidos diretamente dos mocks configurados via SUBADQA_BASE_URL/SUBADQB_BASE_URL.</p>
                     </article>
                 </div>
             </section>
@@ -472,7 +482,7 @@ JSON,
                     <article class="card">
                         <h3>Response</h3>
                         <div class="code-block">{{ $withdrawContract['response'] }}</div>
-                        <p>O MovementService converte as respostas específicas (PROCESSING, DONE etc.) para esta estrutura única, preservando as informações essenciais.</p>
+                        <p>O MovementService converte as respostas específicas (PROCESSING, DONE etc.) para esta estrutura única, preservando as informações essenciais. Este payload reflete exatamente os dados fornecidos pelos mocks de saque.</p>
                     </article>
                 </div>
             </section>
@@ -495,6 +505,40 @@ JSON,
                             &nbsp;&nbsp;-H "X-CSRF-TOKEN: {{ $csrfToken }}" \<br>
                             &nbsp;&nbsp;-d '{"account_id":1,"amount":120.50}'
                         </div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>Autenticação via Sanctum</h2>
+                <div class="card-grid">
+                    <article class="card">
+                        <h3>Gerando um token</h3>
+                        <div class="code-block">
+                            php artisan tinker<br>
+                            &gt;&gt;&gt; $user = App\Models\User::first();<br>
+                            &gt;&gt;&gt; $token = $user->createToken('api')->plainTextToken;
+                        </div>
+                        <p>Use o token retornado como Bearer Token em todas as chamadas protegidas.</p>
+                    </article>
+                    <article class="card">
+                        <h3>Headers necessários</h3>
+                        <div class="code-block">
+                            Authorization: Bearer &lt;TOKEN&gt;<br>
+                            Content-Type: application/json
+                        </div>
+                        <p>Os endpoints `/api/pix`, `/api/withdraw` e `/api/accounts/{id}/balance` exigem o header acima. Webhooks permanecem públicos.</p>
+                    </article>
+                    <article class="card">
+                        <h3>Exemplo cURL</h3>
+                        <div class="code-block">
+                            TOKEN=&lt;token&gt;<br>
+                            curl -X POST http://localhost:8000/api/pix \<br>
+                            &nbsp;&nbsp;-H "Authorization: Bearer $TOKEN" \<br>
+                            &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+                            &nbsp;&nbsp;-d '{"account_id":1,"amount":150.75,"payer":{"name":"Fulano","cpf_cnpj":"12345678900"}}'
+                        </div>
+                        <p>Use o mesmo token para testar saques ou buscar saldo. No Postman, configure o Authorization como Bearer Token e cole o valor gerado.</p>
                     </article>
                 </div>
             </section>

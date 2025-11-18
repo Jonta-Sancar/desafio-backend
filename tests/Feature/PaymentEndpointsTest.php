@@ -10,6 +10,7 @@ use App\Models\Withdrawal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Bus;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class PaymentEndpointsTest extends TestCase
@@ -20,12 +21,12 @@ class PaymentEndpointsTest extends TestCase
     {
         Bus::fake();
         $account = Account::factory()->create();
+        Sanctum::actingAs($account->user);
 
         $payload = [
             'amount' => 150.75,
             'account_id' => $account->id,
             'order' => 'order_test',
-            'expires_in' => 1800,
             'payer' => [
                 'name' => 'Fulano',
                 'cpf_cnpj' => '12345678900',
@@ -63,6 +64,18 @@ class PaymentEndpointsTest extends TestCase
     {
         Bus::fake();
         $account = Account::factory()->create();
+        Sanctum::actingAs($account->user);
+
+        $pixPayload = [
+            'amount' => 500.00,
+            'account_id' => $account->id,
+            'payer' => [
+                'name' => 'Fulano',
+                'cpf_cnpj' => '12345678900',
+            ],
+        ];
+
+        $this->postJson('/api/pix', $pixPayload)->assertCreated();
 
         $payload = [
             'amount' => 320.10,
@@ -101,13 +114,85 @@ class PaymentEndpointsTest extends TestCase
         });
     }
 
+    public function test_withdraw_fails_when_balance_is_insufficient(): void
+    {
+        $account = Account::factory()->create();
+        Sanctum::actingAs($account->user);
+
+        $payload = [
+            'amount' => 100,
+            'account_id' => $account->id,
+            'bank_account' => [
+                'bank_code' => '001',
+                'agencia' => '1234',
+                'conta' => '00012345',
+                'type' => 'checking',
+            ],
+        ];
+
+        $response = $this->postJson('/api/withdraw', $payload);
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJson([
+                'message' => 'Saldo insuficiente para o saque solicitado. Saldo atual: 0.00',
+            ]);
+
+        $this->assertDatabaseCount('withdrawals', 0);
+    }
+
+    public function test_balance_endpoint_returns_current_balance(): void
+    {
+        $account = Account::factory()->create();
+        Sanctum::actingAs($account->user);
+
+        $payload = [
+            'amount' => 200.50,
+            'account_id' => $account->id,
+            'payer' => [
+                'name' => 'Fulano',
+                'cpf_cnpj' => '12345678900',
+            ],
+        ];
+
+        $this->postJson('/api/pix', $payload)->assertCreated();
+
+        $response = $this->getJson("/api/accounts/{$account->id}/balance");
+
+        $response->assertOk()
+            ->assertJson([
+                'account_id' => $account->id,
+                'balance' => 200.5,
+            ]);
+    }
+
     public function test_unknown_api_route_returns_forbidden(): void
     {
+        $account = Account::factory()->create();
+        Sanctum::actingAs($account->user);
+
         $response = $this->getJson('/api/rota-nao-existente');
 
         $response->assertStatus(Response::HTTP_FORBIDDEN)
             ->assertJson([
                 'message' => 'Forbidden. Verifique credenciais ou utilize os endpoints documentados.',
             ]);
+    }
+
+    public function test_pix_requires_authentication(): void
+    {
+        $account = Account::factory()->create();
+
+        $payload = [
+            'amount' => 50,
+            'account_id' => $account->id,
+            'payer' => [
+                'name' => 'Fulano',
+                'cpf_cnpj' => '12345678900',
+            ],
+        ];
+
+        $response = $this->postJson('/api/pix', $payload);
+
+        $response->assertStatus(Response::HTTP_UNAUTHORIZED);
     }
 }

@@ -15,4 +15,6 @@ interface MovementServiceInterface
      * @return array{movement: \App\Models\Movement, response: array}
      */
     public function createWithdraw(Account $account, array $payload): array;
+
+    public function getBalance(Account $account): float;
 }

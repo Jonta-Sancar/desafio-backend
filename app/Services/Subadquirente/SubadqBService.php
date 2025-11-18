@@ -7,6 +7,10 @@ use App\Models\Movement;
 use App\Models\PixPayment;
 use App\Models\Withdrawal;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
+use Throwable;
 
 class SubadqBService implements SubadquirenteInterface
 {
@@ -26,24 +30,17 @@ class SubadqBService implements SubadquirenteInterface
             'expires_in' => $payload['expires_in'],
         ];
 
-        $locationCode = random_int(400, 999);
-        $mockedResponse = [
-            'transaction_id' => 'SP_ADQB_'.Str::uuid()->toString(),
-            'location' => "https://subadqB.com/pix/loc/{$locationCode}",
-            'qrcode' => '00020126530014BR.GOV.BCB.PIX0131backendtest@superpagamentos.com52040000530398654075000.005802BR5901N6001C6205050116304ACDA',
-            'expires_at' => (string) now()->addHour()->timestamp,
-            'status' => 'PROCESSING',
-        ];
+        $response = $this->dispatchPixRequest('subadq_b', $requestPayload);
 
         return [
             'pix_id' => $pixId,
-            'transaction_id' => $mockedResponse['transaction_id'],
-            'status' => $mockedResponse['status'],
+            'transaction_id' => $response['transaction_id'] ?? Str::uuid()->toString(),
+            'status' => $this->normalizeStatus($response['status'] ?? Movement::STATUS_PENDING),
             'meta' => [
                 'subadquirente' => 'SubadqB',
                 'account_label' => $account->label,
                 'request_payload' => $requestPayload,
-                'response_payload' => $mockedResponse,
+                'response_payload' => $response,
             ],
         ];
     }
@@ -63,15 +60,12 @@ class SubadqBService implements SubadquirenteInterface
             'transaction_id' => $payload['transaction_id'],
         ];
 
-        $responsePayload = [
-            'withdraw_id' => $withdrawId,
-            'status' => 'DONE',
-        ];
+        $responsePayload = $this->dispatchWithdrawRequest('subadq_b', $requestPayload);
 
         return [
-            'withdraw_id' => $withdrawId,
-            'transaction_id' => $payload['transaction_id'],
-            'status' => 'DONE',
+            'withdraw_id' => $responsePayload['withdraw_id'] ?? $withdrawId,
+            'transaction_id' => $responsePayload['transaction_id'] ?? $payload['transaction_id'],
+            'status' => $this->normalizeStatus($responsePayload['status'] ?? Movement::STATUS_PENDING),
             'meta' => [
                 'subadquirente' => 'SubadqB',
                 'account_label' => $account->label,
@@ -151,5 +145,69 @@ class SubadqBService implements SubadquirenteInterface
             'PROCESSING' => 'PROCESSING',
             default => Movement::STATUS_PENDING,
         };
+    }
+
+    protected function dispatchPixRequest(string $provider, array $payload): array
+    {
+        return $this->dispatchRequest($provider, 'pix', $payload, 'Não foi possível gerar o PIX no provedor '.$provider.'.');
+    }
+
+    protected function dispatchWithdrawRequest(string $provider, array $payload): array
+    {
+        return $this->dispatchRequest($provider, 'withdraw', $payload, 'Não foi possível registrar o saque no provedor '.$provider.'.');
+    }
+
+    protected function dispatchRequest(string $provider, string $channel, array $payload, string $errorMessage): array
+    {
+        if ($this->shouldFakeRequests()) {
+            return $this->fakeResponse($provider, $channel, $payload);
+        }
+
+        $httpConfig = config("subadquirentes.http.$provider");
+        $channelConfig = data_get($httpConfig, $channel, []);
+        $path = ltrim(data_get($channelConfig, 'path', ''), '/');
+
+        try {
+            return Http::baseUrl($httpConfig['base_url'])
+                ->acceptJson()
+                ->withHeaders($channelConfig['headers'] ?? [])
+                ->post($path, $payload)
+                ->throw()
+                ->json();
+        } catch (Throwable $e) {
+            Log::error("Erro ao chamar subadquirente {$provider} via {$channel}", [
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new InvalidArgumentException($errorMessage);
+        }
+    }
+
+    protected function shouldFakeRequests(): bool
+    {
+        return app()->environment('testing');
+    }
+
+    protected function fakeResponse(string $provider, string $channel, array $payload): array
+    {
+        if ($channel === 'pix') {
+            return [
+                'transaction_id' => 'SP_'.strtoupper($provider).'_FAKE',
+                'location' => "https://{$provider}.mock/pix/loc/888",
+                'qrcode' => 'qrcode-'.$provider,
+                'expires_at' => (string) now()->addHour()->timestamp,
+                'status' => $provider === 'subadq_a' ? 'PENDING' : 'PROCESSING',
+            ];
+        }
+
+        if ($channel === 'withdraw') {
+            return [
+                'withdraw_id' => 'WD_'.strtoupper($provider).'_FAKE',
+                'transaction_id' => $payload['transaction_id'],
+                'status' => $provider === 'subadq_a' ? 'PROCESSING' : 'DONE',
+            ];
+        }
+
+        return [];
     }
 }

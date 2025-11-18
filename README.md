@@ -5,8 +5,9 @@ Este repositório contém a implementação proposta para o desafio de integraç
 ## Visão Geral
 
 - **Contas e Movimentações** – cada usuário possui uma ou mais contas (`accounts`) vinculadas a um provedor (`subadq_a`, `subadq_b`). Toda transação gera um registro de movimentação (`movements`) que funciona como pivot para `pix_payments` ou `withdrawals`.
-- **MovementService** – camada de orquestração que recebe um payload consistente da API, enriquece com dados da conta (merchant/seller, dados bancários, currency, expirations), invoca o serviço da subadquirente, persiste os registros específicos e normaliza a resposta antes de devolvê-la ao cliente.
+- **MovementService** – camada de orquestração que recebe um payload consistente da API, enriquece com dados da conta (merchant/seller, dados bancários, currency, expirations), invoca o serviço da subadquirente, persiste os registros específicos e normaliza a resposta antes de devolvê-la ao cliente. Também calcula o saldo disponível (entradas - saídas) e bloqueia saques quando o valor solicitado excede o total disponível.
 - **Subadquirente Manager** – resolve dinamicamente a implementação correta com base no provider da conta. Cada serviço (`SubadqAService`, `SubadqBService`) conhece apenas seu formato específico, enquanto o resto da aplicação trabalha com o contrato genérico.
+- **Integração HTTP com os mocks oficiais** – as classes das subadquirentes utilizam o `Http` client do Laravel para chamar diretamente os endpoints fornecidos no documento do desafio (Postman), garantindo que os dados retornados pela API reflitam fielmente as simulações oficiais.
 - **Webhooks simulados / reais** – o job `SimulateWebhookJob` dispara payloads semelhantes aos webhooks reais. Quando `SUBADQ_WEBHOOK_MODE=real`, basta configurar as URLs de `routes/api.php` para receber chamadas externas, pois o parser já está desacoplado.
 
 ## Arquitetura e Fluxos
@@ -70,6 +71,7 @@ Resposta:
   "status": "PENDING"
 }
 ```
+> Os dados de `location`, `qrcode`, `expires_at` e `status` são exatamente os retornados pelos mocks configurados em `SUBADQA_BASE_URL`/`SUBADQB_BASE_URL`.
 
 ### `POST /api/withdraw`
 ```jsonc
@@ -104,6 +106,16 @@ Resposta:
   "status": "DONE"
 }
 ```
+> Assim como no PIX, o status retornado reflete exatamente a resposta enviada pelos mocks de saque do Postman.
+
+### `GET /api/accounts/{account_id}/balance`
+```jsonc
+{
+  "account_id": 1,
+  "balance": 200.50
+}
+```
+> Retorna o saldo disponível calculado a partir das entradas (PIX) menos as saídas (saques). Esse valor é o mesmo utilizado internamente para liberar ou bloquear novos saques.
 
 ## Executando o Projeto
 
@@ -115,6 +127,72 @@ php artisan migrate --seed
 php artisan serve
 php artisan queue:listen --tries=1   # segundo terminal (modo simulation)
 ```
+
+> **Importante:** as integrações de PIX consomem diretamente os mocks publicados no Postman. Ajuste `SUBADQA_BASE_URL` e `SUBADQB_BASE_URL` caso os endpoints mudem ou se desejar apontar para outros ambientes. Esses valores já estão definidos em `.env.example`.
+
+### Autenticação via Sanctum
+
+Todas as rotas de API (`/api/pix`, `/api/withdraw`, `/api/accounts/{id}/balance`) exigem um token Bearer emitido pelo Laravel Sanctum. Para gerar um token de teste:
+
+```bash
+php artisan tinker
+>>> $user = App\Models\User::first();
+>>> $token = $user->createToken('api')->plainTextToken;
+```
+
+Use o valor retornado na saída acima para montar o header:
+
+```
+Authorization: Bearer <TOKEN>
+```
+
+Os webhooks (`/api/webhooks/...`) continuam públicos para que as subadquirentes possam notificar o sistema.
+
+## Testando com cURL ou Postman
+
+Depois de gerar o token, defina uma variável de ambiente para facilitar:
+
+```bash
+export TOKEN=<TOKEN_GERADO>
+```
+
+### Criar PIX
+```bash
+curl -X POST http://localhost:8000/api/pix \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "account_id": 1,
+        "amount": 150.75,
+        "payer": {"name": "Fulano", "cpf_cnpj": "12345678900"}
+      }'
+```
+
+### Criar Saque
+```bash
+curl -X POST http://localhost:8000/api/withdraw \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "account_id": 1,
+        "amount": 300,
+        "transaction_id": "SP123",
+        "bank_account": {
+          "bank_code": "001",
+          "agencia": "1234",
+          "conta": "00012345",
+          "type": "checking"
+        }
+      }'
+```
+
+### Consultar Saldo
+```bash
+curl -X GET http://localhost:8000/api/accounts/1/balance \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+> No Postman, basta configurar os mesmos headers (`Authorization: Bearer ...`, `Content-Type: application/json`) e usar os JSONs acima como body.
 
 ### Seeds e Dados de Teste
 
@@ -144,4 +222,4 @@ php artisan test
 
 ---
 
-Com essa arquitetura, garantimos separação clara entre **contrato público** (API), **regras de negócio** (MovementService + Models) e **integrações externas** (Subadquirentes). A substituição ou adição de provedores passa a ser uma alteração localizada, e o time consumidor da API recebe sempre o mesmo payload, independe da origem real da transação.*** End Patch
+Com essa arquitetura, garantimos separação clara entre **contrato público** (API), **regras de negócio** (MovementService + Models) e **integrações externas** (Subadquirentes). A substituição ou adição de provedores passa a ser uma alteração localizada, e o time consumidor da API recebe sempre o mesmo payload, independe da origem real da transação.

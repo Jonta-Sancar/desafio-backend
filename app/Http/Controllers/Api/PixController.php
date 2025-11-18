@@ -23,7 +23,6 @@ class PixController extends Controller
             'account_id' => 'required|exists:accounts,id',
             'amount' => 'required|numeric|min:0.01',
             'order' => 'nullable|string|max:100',
-            'expires_in' => 'nullable|integer|min:60',
             'payer.name' => 'required|string|max:255',
             'payer.cpf_cnpj' => 'required|string|max:20',
         ]);

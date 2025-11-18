@@ -218,6 +218,11 @@ class MovementService implements MovementServiceInterface
         ];
     }
 
+    public function getBalance(Account $account): float
+    {
+        return $this->calculateAvailableBalance($account);
+    }
+
     protected function formatWithdrawResponse(Withdrawal $withdrawal): array
     {
         $normalized = data_get($withdrawal->meta, 'normalized_request', []);
@@ -231,6 +236,34 @@ class MovementService implements MovementServiceInterface
             'bank_account' => $normalized['bank_account'] ?? null,
             'status' => $withdrawal->status,
         ];
+    }
+
+    protected function calculateAvailableBalance(Account $account): float
+    {
+        $invalidStatuses = ['CANCELLED', 'FAILED'];
+
+        $entries = PixPayment::query()
+            ->where('account_id', $account->id)
+            ->whereNotIn('status', $invalidStatuses)
+            ->sum('amount');
+
+        $outputs = Withdrawal::query()
+            ->where('account_id', $account->id)
+            ->whereNotIn('status', $invalidStatuses)
+            ->sum('amount');
+
+        return (float) $entries - (float) $outputs;
+    }
+
+    protected function ensureSufficientBalance(Account $account, float $amount): void
+    {
+        $balance = $this->calculateAvailableBalance($account);
+
+        if ($balance < $amount) {
+            throw new InvalidArgumentException(
+                sprintf('Saldo insuficiente para o saque solicitado. Saldo atual: %.2f', $balance)
+            );
+        }
     }
 
     protected function maybeDispatchWebhookJob(Movement $movement): void
