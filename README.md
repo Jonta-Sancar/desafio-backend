@@ -2,6 +2,14 @@
 | Jonathas Carneiro|  [Linkedin](https://www.linkedin.com/in/jonta-sancar)|[Repositório](https://github.com/Jonta-Sancar/desafio-backend)|
 |------------------|----------------|-----------------|
 
+# Especificações do projeto
+- php:      8.3.9
+- composer: 2.7.7
+- Laravel:  11.46.1
+- mysql:    8.0.38.0
+
+---
+
 Esta é uma solução desenvolvida em certa de 6 horas, com mais tempo poderia atribuir outras características como docker, maior dinamização do controle de subadquirintes e mais.
 Tentei abstrair a funcionalidade principal para o pix e os saques, fazendo com que esta entidade se comunicasse requerendo as especificidades das subadquirintes, fazendo funcionar o fluxo neste ambiente de teste pensando em facilitar a posterior migração para o ambiente de homologação/produção.
 
