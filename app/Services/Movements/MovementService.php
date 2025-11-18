@@ -10,8 +10,10 @@ use App\Models\Withdrawal;
 use App\Services\Subadquirente\SubadquirenteManager;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Throwable;
 
 class MovementService implements MovementServiceInterface
 {
@@ -21,90 +23,108 @@ class MovementService implements MovementServiceInterface
 
     public function createPix(Account $account, array $payload): array
     {
-        return DB::transaction(function () use ($account, $payload) {
-            $normalized = $this->transformPixRequest($account, $payload);
+        try {
+            return DB::transaction(function () use ($account, $payload) {
+                $normalized = $this->transformPixRequest($account, $payload);
 
-            $movement = Movement::create([
+                $movement = Movement::create([
+                    'account_id' => $account->id,
+                    'type' => Movement::TYPE_PIX,
+                    'status' => Movement::STATUS_CREATED,
+                    'amount' => $normalized['amount'],
+                    'payload' => [
+                        'request' => $payload,
+                    ],
+                ]);
+
+                $providerService = $this->subadquirenteManager->resolve($account->provider);
+                $serviceResponse = $providerService->createPix($account, $movement, $normalized);
+
+                $pix = PixPayment::create([
+                    'movement_id' => $movement->id,
+                    'account_id' => $account->id,
+                    'pix_id' => $serviceResponse['pix_id'],
+                    'transaction_id' => $serviceResponse['transaction_id'] ?? null,
+                    'amount' => $normalized['amount'],
+                    'status' => $serviceResponse['status'] ?? Movement::STATUS_PENDING,
+                    'meta' => array_merge(
+                        ['normalized_request' => $normalized],
+                        Arr::get($serviceResponse, 'meta', [])
+                    ),
+                ]);
+
+                $movement->update([
+                    'status' => $pix->status,
+                ]);
+
+                $this->maybeDispatchWebhookJob($movement);
+
+                return [
+                    'movement' => $movement->load('pixPayment'),
+                    'response' => $this->formatPixResponse($pix),
+                ];
+            });
+        } catch (Throwable $e) {
+            Log::error('Erro ao criar PIX', [
                 'account_id' => $account->id,
-                'type' => Movement::TYPE_PIX,
-                'status' => Movement::STATUS_CREATED,
-                'amount' => $normalized['amount'],
-                'payload' => [
-                    'request' => $payload,
-                ],
+                'error' => $e->getMessage(),
             ]);
-
-            $providerService = $this->subadquirenteManager->resolve($account->provider);
-            $serviceResponse = $providerService->createPix($account, $movement, $normalized);
-
-            $pix = PixPayment::create([
-                'movement_id' => $movement->id,
-                'account_id' => $account->id,
-                'pix_id' => $serviceResponse['pix_id'],
-                'transaction_id' => $serviceResponse['transaction_id'] ?? null,
-                'amount' => $normalized['amount'],
-                'status' => $serviceResponse['status'] ?? Movement::STATUS_PENDING,
-                'meta' => array_merge(
-                    ['normalized_request' => $normalized],
-                    Arr::get($serviceResponse, 'meta', [])
-                ),
-            ]);
-
-            $movement->update([
-                'status' => $pix->status,
-            ]);
-
-            $this->maybeDispatchWebhookJob($movement);
-
-            return [
-                'movement' => $movement->load('pixPayment'),
-                'response' => $this->formatPixResponse($pix),
-            ];
-        });
+            throw $e;
+        }
     }
 
     public function createWithdraw(Account $account, array $payload): array
     {
-        return DB::transaction(function () use ($account, $payload) {
-            $normalized = $this->transformWithdrawRequest($account, $payload);
+        try {
+            return DB::transaction(function () use ($account, $payload) {
+                $lockedAccount = Account::query()->whereKey($account->id)->lockForUpdate()->firstOrFail();
+                $normalized = $this->transformWithdrawRequest($lockedAccount, $payload);
+                $this->ensureSufficientBalance($lockedAccount, $normalized['amount']);
 
-            $movement = Movement::create([
+                $movement = Movement::create([
+                    'account_id' => $lockedAccount->id,
+                    'type' => Movement::TYPE_WITHDRAW,
+                    'status' => Movement::STATUS_CREATED,
+                    'amount' => $normalized['amount'],
+                    'payload' => [
+                        'request' => $payload,
+                    ],
+                ]);
+
+                $providerService = $this->subadquirenteManager->resolve($lockedAccount->provider);
+                $serviceResponse = $providerService->createWithdraw($lockedAccount, $movement, $normalized);
+
+                $withdrawal = Withdrawal::create([
+                    'movement_id' => $movement->id,
+                    'account_id' => $lockedAccount->id,
+                    'withdraw_id' => $serviceResponse['withdraw_id'],
+                    'transaction_id' => $serviceResponse['transaction_id'] ?? $normalized['transaction_id'],
+                    'amount' => $normalized['amount'],
+                    'status' => $serviceResponse['status'] ?? Movement::STATUS_PENDING,
+                    'meta' => array_merge(
+                        ['normalized_request' => $normalized],
+                        Arr::get($serviceResponse, 'meta', [])
+                    ),
+                ]);
+
+                $movement->update([
+                    'status' => $withdrawal->status,
+                ]);
+
+                $this->maybeDispatchWebhookJob($movement);
+
+                return [
+                    'movement' => $movement->load('withdrawal'),
+                    'response' => $this->formatWithdrawResponse($withdrawal),
+                ];
+            });
+        } catch (Throwable $e) {
+            Log::error('Erro ao criar saque', [
                 'account_id' => $account->id,
-                'type' => Movement::TYPE_WITHDRAW,
-                'status' => Movement::STATUS_CREATED,
-                'amount' => $normalized['amount'],
-                'payload' => [
-                    'request' => $payload,
-                ],
+                'error' => $e->getMessage(),
             ]);
-
-            $providerService = $this->subadquirenteManager->resolve($account->provider);
-            $serviceResponse = $providerService->createWithdraw($account, $movement, $normalized);
-
-            $withdrawal = Withdrawal::create([
-                'movement_id' => $movement->id,
-                'account_id' => $account->id,
-                'withdraw_id' => $serviceResponse['withdraw_id'],
-                'transaction_id' => $serviceResponse['transaction_id'] ?? $normalized['transaction_id'],
-                'amount' => $normalized['amount'],
-                'status' => $serviceResponse['status'] ?? Movement::STATUS_PENDING,
-                'meta' => array_merge(
-                    ['normalized_request' => $normalized],
-                    Arr::get($serviceResponse, 'meta', [])
-                ),
-            ]);
-
-            $movement->update([
-                'status' => $withdrawal->status,
-            ]);
-
-            $this->maybeDispatchWebhookJob($movement);
-
-            return [
-                'movement' => $movement->load('withdrawal'),
-                'response' => $this->formatWithdrawResponse($withdrawal),
-            ];
-        });
+            throw $e;
+        }
     }
 
     protected function transformPixRequest(Account $account, array $payload): array
@@ -125,7 +145,7 @@ class MovementService implements MovementServiceInterface
         }
 
         $order = $payload['order'] ?? sprintf('order_%s_%s', $account->id, now()->format('YmdHis'));
-        $expiresIn = (int) ($payload['expires_in'] ?? 3600);
+        $expiresIn = (int) config('subadquirentes.pix_expires_in', 3600);
 
         return [
             'merchant_id' => $merchantId,

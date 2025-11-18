@@ -7,6 +7,9 @@ use App\Models\Account;
 use App\Services\Movements\MovementServiceInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
+use Throwable;
 
 class PixController extends Controller
 {
@@ -25,19 +28,39 @@ class PixController extends Controller
             'payer.cpf_cnpj' => 'required|string|max:20',
         ]);
 
-        /** @var Account|null $account */
-        $account = Account::query()
-            ->where('active', true)
-            ->find($data['account_id']);
+        try {
+            /** @var Account|null $account */
+            $account = Account::query()
+                ->where('active', true)
+                ->find($data['account_id']);
 
-        if (! $account) {
+            if (! $account) {
+                return response()->json([
+                    'message' => 'Conta não encontrada ou inativa.',
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            $result = $this->movementService->createPix($account, $data);
+
+            return response()->json($result['response'], Response::HTTP_CREATED);
+        } catch (InvalidArgumentException $e) {
+            Log::warning('Erro de validação ao criar PIX', [
+                'account_id' => $data['account_id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
-                'message' => 'Conta não encontrada ou inativa.',
-            ], Response::HTTP_NOT_FOUND);
+                'message' => $e->getMessage(),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (Throwable $e) {
+            Log::error('Erro inesperado ao processar PIX', [
+                'account_id' => $data['account_id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Erro interno ao processar o PIX.',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        $result = $this->movementService->createPix($account, $data);
-
-        return response()->json($result['response'], Response::HTTP_CREATED);
     }
 }

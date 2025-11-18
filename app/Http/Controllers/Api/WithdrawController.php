@@ -7,6 +7,9 @@ use App\Models\Account;
 use App\Services\Movements\MovementServiceInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
+use Throwable;
 
 class WithdrawController extends Controller
 {
@@ -20,25 +23,46 @@ class WithdrawController extends Controller
             'account_id' => 'required|exists:accounts,id',
             'amount' => 'required|numeric|min:0.01',
             'transaction_id' => 'nullable|string|max:100',
-            'bank_account.bank_code' => 'required|string|max:10',
-            'bank_account.agencia' => 'required|string|max:20',
-            'bank_account.conta' => 'required|string|max:30',
-            'bank_account.type' => 'required|string|max:20',
+            'bank_account' => 'nullable|array',
+            'bank_account.bank_code' => 'required_with:bank_account|string|max:10',
+            'bank_account.agencia' => 'required_with:bank_account|string|max:20',
+            'bank_account.conta' => 'required_with:bank_account|string|max:30',
+            'bank_account.type' => 'required_with:bank_account|string|max:20',
         ]);
 
-        /** @var Account|null $account */
-        $account = Account::query()
-            ->where('active', true)
-            ->find($data['account_id']);
+        try {
+            /** @var Account|null $account */
+            $account = Account::query()
+                ->where('active', true)
+                ->find($data['account_id']);
 
-        if (! $account) {
+            if (! $account) {
+                return response()->json([
+                    'message' => 'Conta não encontrada ou inativa.',
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            $result = $this->movementService->createWithdraw($account, $data);
+
+            return response()->json($result['response'], Response::HTTP_CREATED);
+        } catch (InvalidArgumentException $e) {
+            Log::warning('Erro de validação ao criar saque', [
+                'account_id' => $data['account_id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
-                'message' => 'Conta não encontrada ou inativa.',
-            ], Response::HTTP_NOT_FOUND);
+                'message' => $e->getMessage(),
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (Throwable $e) {
+            Log::error('Erro inesperado ao processar saque', [
+                'account_id' => $data['account_id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Erro interno ao processar o saque.',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        $result = $this->movementService->createWithdraw($account, $data);
-
-        return response()->json($result['response'], Response::HTTP_CREATED);
     }
 }
