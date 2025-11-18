@@ -1,3 +1,14 @@
+|------------------|-----------------|-----------------|
+| Jonathas Carneiro|  [Linkedin](https://www.linkedin.com/in/jonta-sancar)|[Repositório](https://github.com/Jonta-Sancar/desafio-backend)|
+|------------------|----------------|-----------------|
+
+Esta é uma solução desenvolvida em certa de 6 horas, com mais tempo poderia atribuir outras características como docker, maior dinamização do controle de subadquirintes e mais.
+Tentei abstrair a funcionalidade principal para o pix e os saques, fazendo com que esta entidade se comunicasse requerendo as especificidades das subadquirintes, fazendo funcionar o fluxo neste ambiente de teste pensando em facilitar a posterior migração para o ambiente de homologação/produção.
+
+Talvez a regra em produção não seja necessariamente assim, mas também apliquei uma funcionalidade de saldo que valida o saque apenas caso haja saldo disponível: PIX (entradas), Saques (saídas);
+
+---
+
 # Desafio Super Pagamentos – Backend
 
 Este repositório contém a implementação proposta para o desafio de integração com múltiplas subadquirentes (PIX e saques). A aplicação foi construída em Laravel 11 e prioriza **padronização de contratos**, **extensibilidade** e **processamento assíncrono configurável**.
