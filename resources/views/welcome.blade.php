@@ -1,54 +1,115 @@
 @php
-    $objectives = [
-        'Simular a geracao de PIX via subadquirentes configuradas.',
-        'Processar notificacoes internas (webhooks) para confirmar pagamentos.',
-        'Registrar e acompanhar pedidos de saque.',
-        'Permitir que novas subadquirentes sejam adicionadas rapidamente.'
+    $stack = [
+        ['label' => 'Framework', 'value' => 'Laravel 11.x'],
+        ['label' => 'Banco', 'value' => 'SQLite (padrão)'],
+        ['label' => 'Filas', 'value' => 'Database queue + jobs'],
+        ['label' => 'PHP', 'value' => '^8.2'],
     ];
 
-    $routes = [
+    $implementation = [
         [
-            'title' => 'Gerar PIX',
+            'title' => 'Arquitetura contas + movimentacoes',
+            'details' => 'A entidade Account amarra usuario e subadquirente. Movements registram qualquer transacao (PIX/saque) e servem de pivot para os registros especificos.'
+        ],
+        [
+            'title' => 'Gerenciador de subadquirentes',
+            'details' => 'SubadqAService e SubadqBService implementam SubadquirenteInterface e sao resolvidos dinamicamente via SubadquirenteManager conforme provider definido na conta.'
+        ],
+        [
+            'title' => 'Webhooks configuraveis',
+            'details' => 'Config/subadquirentes.php expõe SUBADQ_WEBHOOK_MODE. Em modo simulation, SimulateWebhookJob produz payloads reais e reusa o parser dos webhooks.'
+        ],
+        [
+            'title' => 'Testes de endpoints',
+            'details' => 'tests/Feature/PaymentEndpointsTest.php cobre criacao de movimento, registro especifico e despacho do job para /api/pix e /api/withdraw.'
+        ],
+    ];
+
+    $endpoints = [
+        [
             'method' => 'POST',
-            'endpoint' => '/api/pix',
-            'details' => 'Envia o payload para a subadquirente do usuario e agenda a confirmacao via webhook simulado.'
+            'path' => '/api/pix',
+            'request' => '{"account_id": 1, "amount": 150.75}',
+            'response' => '{"id":1,"movement_id":10,"account_id":1,"pix_id":"PIX...","status":"PENDING","amount":"150.75"}'
         ],
         [
-            'title' => 'Realizar Saque',
             'method' => 'POST',
-            'endpoint' => '/api/withdraw',
-            'details' => 'Registra o saque e executa fluxo semelhante ao do PIX, garantindo atualizacao posterior via evento.'
+            'path' => '/api/withdraw',
+            'request' => '{"account_id": 1, "amount": 320.10}',
+            'response' => '{"id":1,"movement_id":11,"account_id":1,"withdraw_id":"WD...","status":"PENDING"}'
         ],
     ];
 
-    $pixStatuses = [
-        'PENDING' => 'Pix criado aguardando pagamento.',
-        'PROCESSING' => 'Pix aguardando confirmacao.',
-        'CONFIRMED' => 'Pagamento confirmado pela subadquirente.',
-        'PAID' => 'Pagamento concluido com sucesso.',
-        'CANCELLED' => 'Cancelado pela subadquirente.',
-        'FAILED' => 'Falha na autorizacao.'
+    $webhookSteps = [
+        'Controller valida account_id, cria Movement e define o provider responsavel.',
+        'O service gera IDs externos simulados; PixPayment/Withdrawal recebem FK movement_id.',
+        'SimulateWebhookJob (modo simulation) ou o endpoint /api/webhooks/{provider} acionam SubadquirenteInterface::process*.',
+        'O parser normaliza status, atualiza o modelo especifico e o Movement, armazenando o payload em meta.',
     ];
 
-    $withdrawStatuses = [
-        'PENDING' => 'Saque criado aguardando processamento.',
-        'PROCESSING' => 'Saque em processamento.',
-        'SUCCESS' => 'Saque realizado com sucesso.',
-        'DONE' => 'Equivalente a sucesso para SubadqB.',
-        'CANCELLED' => 'Cancelado pela subadquirente.',
-        'FAILED' => 'Falha na liquidacao.'
-    ];
-
-    $subadquirentes = [
+    $models = [
         [
-            'name' => 'SubadqA',
-            'doc' => 'https://documenter.getpostman.com/view/49994027/2sB3WvMJ8p',
-            'base' => 'https://0acdeaee-1729-4d55-80eb-d54a125e5e18.mock.pstmn.io'
+            'name' => 'accounts',
+            'fields' => [
+                'provider' => 'Identificador (subadq_a ou subadq_b).',
+                'webhook_url' => 'URL configurada para ambiente real.',
+                'webhook_secret' => 'Token para validar assinaturas.',
+                'settings' => 'JSON com credenciais e preferencias.'
+            ],
         ],
         [
-            'name' => 'SubadqB',
-            'doc' => 'https://documenter.getpostman.com/view/49994027/2sB3WvMJD7',
-            'base' => 'https://ef8513c8-fd99-4081-8963-573cd135e133.mock.pstmn.io'
+            'name' => 'movements',
+            'fields' => [
+                'account_id' => 'FK para a conta responsavel.',
+                'type' => 'PIX ou WITHDRAW.',
+                'status' => 'CREATED/PENDING/CONFIRMED...',
+                'payload' => 'Snapshot da requisicao.',
+                'processed_at' => 'Marcado apos webhook.'
+            ],
+        ],
+        [
+            'name' => 'pix_payments',
+            'fields' => [
+                'movement_id' => 'Referencia direta ao movimento.',
+                'account_id' => 'Reforco para consultas.',
+                'pix_id' => 'Identificador externo.',
+                'transaction_id' => 'Transaction reference do provider.',
+                'meta' => 'Dados retornados pelo service.'
+            ],
+        ],
+        [
+            'name' => 'withdrawals',
+            'fields' => [
+                'movement_id' => 'FK para movement.',
+                'account_id' => 'Conta responsavel.',
+                'withdraw_id' => 'ID enviado ao provider.',
+                'transaction_id' => 'Referencia complementar.',
+                'meta' => 'Resposta e payloads de webhook.'
+            ],
+        ],
+    ];
+
+    $commands = [
+        'composer install',
+        'cp .env.example .env',
+        'php artisan key:generate',
+        'php artisan migrate --seed',
+        'php artisan serve',
+        'php artisan queue:listen --tries=1',
+    ];
+
+    $faq = [
+        [
+            'q' => 'Como alterno entre webhook simulado e real?',
+            'a' => 'Defina SUBADQ_WEBHOOK_MODE=simulation (padrão) ou real. Em modo real nao dispararemos o job; use /api/webhooks/{provider}/pix|withdraw para receber notificacoes.'
+        ],
+        [
+            'q' => 'Posso adicionar novas subadquirentes?',
+            'a' => 'Sim. Registre a classe em config/subadquirentes.php e implemente os seis metodos do contrato. Movements continuarao funcionando sem ajuste.'
+        ],
+        [
+            'q' => 'Onde ficam os testes?',
+            'a' => 'tests/Feature/PaymentEndpointsTest.php cobre os fluxos principais e pode ser expandido para validacoes e webhooks.'
         ],
     ];
 @endphp
@@ -57,7 +118,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Super Pagamentos - Desafio Backend</title>
+    <title>Super Pagamentos - Documentacao do Modulo</title>
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet" />
     <style>
@@ -108,8 +169,8 @@
         }
 
         .hero p {
-            font-size: 1.15rem;
-            max-width: 800px;
+            font-size: 1.05rem;
+            max-width: 820px;
             margin: 0 auto 1.5rem;
             color: rgba(255,255,255,0.85);
         }
@@ -165,69 +226,13 @@
 
         .card h3 {
             margin-top: 0;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.4rem;
             font-size: 1.15rem;
         }
 
         .card p {
             margin: 0;
             color: rgba(255,255,255,0.85);
-        }
-
-        .objective-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            display: grid;
-            gap: 0.75rem;
-        }
-
-        .objective-list li {
-            border-left: 4px solid var(--primary);
-            padding-left: 1rem;
-            background: rgba(0,0,0,0.3);
-            border-radius: 0.5rem;
-            padding-block: 0.75rem;
-        }
-
-        .status-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1rem;
-        }
-
-        .status-grid article {
-            border-radius: 0.75rem;
-            background: rgba(0,0,0,0.3);
-            padding: 1rem;
-        }
-
-        .status-grid h4 {
-            margin: 0 0 0.75rem;
-            font-size: 1rem;
-            color: rgba(255,255,255,0.85);
-        }
-
-        .status-grid ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .status-grid li {
-            margin-bottom: 0.5rem;
-            font-size: 0.95rem;
-        }
-
-        .status-grid span {
-            font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-            color: var(--primary);
-        }
-
-        .sub-card {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
         }
 
         .code-block {
@@ -237,6 +242,61 @@
             padding: 1rem;
             font-size: 0.9rem;
             overflow: auto;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .timeline {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 0.85rem;
+        }
+
+        .timeline li {
+            position: relative;
+            padding-left: 1.75rem;
+        }
+
+        .timeline li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0.35rem;
+            width: 0.8rem;
+            height: 0.8rem;
+            border-radius: 50%;
+            border: 2px solid var(--primary);
+        }
+
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .model-card {
+            background: rgba(0,0,0,0.35);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 1rem;
+            padding: 1.25rem;
+        }
+
+        .model-card ul {
+            padding-left: 1rem;
+            margin: 0;
+        }
+
+        .faq {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .faq article {
+            background: rgba(0,0,0,0.35);
+            border-radius: 0.9rem;
+            padding: 1.25rem;
             border: 1px solid rgba(255,255,255,0.08);
         }
 
@@ -265,105 +325,113 @@
     <div class="page">
         <header>
             <div class="hero">
-                <h1>Desafio Super Pagamentos - Backend</h1>
+                <h1>Documentacao do Modulo Super Pagamentos</h1>
                 <p>
-                    Mantenha o ecossistema preparado para integrar diversas subadquirentes, simulando fluxos
-                    de PIX e saques com webhooks internos. Esta pagina resume o desafio descrito no README,
-                    agora com uma experiencia visual alinhada ao estilo Laravel e a paleta Super.
+                    Esta pagina descreve a implementacao entregue para o desafio. Aqui voce encontra como
+                    as rotas foram definidas, de que forma os webhooks sao simulados, quais modelos recebem os dados
+                    e quais comandos permitem testar tudo rapidamente.
                 </p>
             </div>
             <div class="badges">
-                <span class="badge">Laravel 11</span>
-                <span class="badge">Multi subadquirente</span>
-                <span class="badge">Webhooks simulados</span>
-                <span class="badge">Fila + Jobs</span>
+                @foreach ($stack as $item)
+                    <span class="badge">{{ $item['label'] }}: {{ $item['value'] }}</span>
+                @endforeach
             </div>
         </header>
         <main>
             <section class="section">
-                <h2>Objetivos principais</h2>
-                <ul class="objective-list">
-                    @foreach ($objectives as $objective)
-                        <li>{{ $objective }}</li>
-                    @endforeach
-                </ul>
-            </section>
-
-            <section class="section">
-                <h2>Fluxo da API</h2>
+                <h2>Visao geral da implementacao</h2>
                 <div class="card-grid">
-                    @foreach ($routes as $route)
+                    @foreach ($implementation as $item)
                         <article class="card">
-                            <h3>{{ $route['title'] }}</h3>
-                            <p><strong>{{ $route['method'] }}</strong> {{ $route['endpoint'] }}</p>
-                            <p>{{ $route['details'] }}</p>
+                            <h3>{{ $item['title'] }}</h3>
+                            <p>{{ $item['details'] }}</p>
                         </article>
                     @endforeach
                 </div>
             </section>
 
             <section class="section">
-                <h2>Webhooks e status possiveis</h2>
-                <div class="status-grid">
-                    <article>
-                        <h4>PIX</h4>
-                        <ul>
-                            @foreach ($pixStatuses as $status => $desc)
-                                <li><span>{{ $status }}</span> - {{ $desc }}</li>
-                            @endforeach
-                        </ul>
-                    </article>
-                    <article>
-                        <h4>Saques</h4>
-                        <ul>
-                            @foreach ($withdrawStatuses as $status => $desc)
-                                <li><span>{{ $status }}</span> - {{ $desc }}</li>
-                            @endforeach
-                        </ul>
-                    </article>
-                </div>
-            </section>
-
-            <section class="section">
-                <h2>Subadquirentes disponiveis</h2>
+                <h2>Endpoints expostos</h2>
                 <div class="card-grid">
-                    @foreach ($subadquirentes as $sub)
-                        <article class="card sub-card">
-                            <h3>{{ $sub['name'] }}</h3>
-                            <p>Base URL<br><strong>{{ $sub['base'] }}</strong></p>
-                            <p><a href="{{ $sub['doc'] }}" target="_blank" rel="noreferrer">Documentacao Postman -></a></p>
+                    @foreach ($endpoints as $endpoint)
+                        <article class="card">
+                            <h3>{{ $endpoint['method'] }} {{ $endpoint['path'] }}</h3>
+                            <p>Request</p>
+                            <div class="code-block">{{ $endpoint['request'] }}</div>
+                            <p>Response (exemplo)</p>
+                            <div class="code-block">{{ $endpoint['response'] }}</div>
                         </article>
                     @endforeach
                 </div>
             </section>
 
             <section class="section">
-                <h2>Como experimentar rapidamente</h2>
+                <h2>Fluxo do webhook simulado</h2>
+                <div class="card">
+                    <ul class="timeline">
+                        @foreach ($webhookSteps as $step)
+                            <li>{{ $step }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>Modelos persistidos</h2>
+                <div class="model-grid">
+                    @foreach ($models as $model)
+                        <article class="model-card">
+                            <h3>{{ $model['name'] }}</h3>
+                            <ul>
+                                @foreach ($model['fields'] as $field => $desc)
+                                    <li><strong>{{ $field }}</strong>: {{ $desc }}</li>
+                                @endforeach
+                            </ul>
+                        </article>
+                    @endforeach
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>Execucao local</h2>
                 <div class="card-grid">
                     <article class="card">
-                        <h3>Comandos principais</h3>
+                        <h3>Setup e servidor</h3>
                         <div class="code-block">
-                            composer install<br>
-                            cp .env.example .env<br>
-                            php artisan key:generate<br>
-                            php artisan migrate --seed<br>
-                            php artisan serve
+                            @foreach ($commands as $command)
+                                {{ $command }}<br>
+                            @endforeach
                         </div>
+                        <p>Execute queue:listen em um terminal separado para processar SimulateWebhookJob.</p>
                     </article>
                     <article class="card">
-                        <h3>Requisicao de PIX</h3>
+                        <h3>Testes automatizados</h3>
                         <div class="code-block">
-                            curl -X POST http://localhost:8000/api/pix \<br>
-                            &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
-                            &nbsp;&nbsp;-d '{"amount":125.50,"user_id":1,"subadq":"subadqA"}'
+                            php artisan test
                         </div>
-                        <p>O webhook simulado confirma o pagamento em poucos segundos.</p>
+                        <p>
+                            PaymentEndpointsTest verifica criacao dos registros, status inicial e despacho do job.
+                            Use como ponto de partida para cobrir validacoes adicionais.
+                        </p>
                     </article>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>FAQ rapido</h2>
+                <div class="faq">
+                    @foreach ($faq as $item)
+                        <article>
+                            <h3>{{ $item['q'] }}</h3>
+                            <p>{{ $item['a'] }}</p>
+                        </article>
+                    @endforeach
                 </div>
             </section>
         </main>
         <footer>
-            Super Pagamentos - {{ now()->year }} - Construido com Laravel
+            Super Pagamentos - {{ now()->year }} - Documentacao do desafio backend
         </footer>
     </div>
 </body>

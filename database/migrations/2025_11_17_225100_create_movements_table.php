@@ -8,21 +8,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('withdrawals', function (Blueprint $table) {
+        Schema::create('movements', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('movement_id')->constrained('movements')->cascadeOnDelete();
             $table->foreignId('account_id')->constrained('accounts')->cascadeOnDelete();
-            $table->string('withdraw_id')->nullable()->index();
-            $table->string('transaction_id')->nullable()->index();
+            $table->string('type');
+            $table->string('status')->default('CREATED')->index();
             $table->decimal('amount', 12, 2);
-            $table->string('status')->default('PENDING')->index();
-            $table->json('meta')->nullable();
+            $table->json('payload')->nullable();
+            $table->timestamp('processed_at')->nullable();
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('withdrawals');
+        Schema::dropIfExists('movements');
     }
 };

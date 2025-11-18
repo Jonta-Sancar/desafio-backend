@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Models\PixPayment;
-use App\Models\Withdrawal;
+use App\Models\Movement;
+use App\Services\Subadquirente\SubadquirenteManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,32 +13,56 @@ class SimulateWebhookJob implements ShouldQueue
 {
     use Dispatchable, Queueable;
 
-    public string $type;
-    public int $modelId;
-
-    public function __construct(string $type, int $modelId)
+    public function __construct(public int $movementId)
     {
-        $this->type = $type;
-        $this->modelId = $modelId;
     }
 
-    public function handle(): void
+    public function handle(SubadquirenteManager $subadquirenteManager): void
     {
-        if ($this->type === 'pix') {
-            $pix = PixPayment::find($this->modelId);
-            if (! $pix) {
-                return;
-            }
-            $pix->update(['status' => 'CONFIRMED']);
-            Log::info('Simulated webhook: pix confirmed', ['pix_id' => $pix->id]);
+        $movement = Movement::query()
+            ->with(['account', 'pixPayment', 'withdrawal'])
+            ->find($this->movementId);
+
+        if (! $movement || ! $movement->account) {
             return;
         }
 
-        $wd = Withdrawal::find($this->modelId);
-        if (! $wd) {
+        $service = $subadquirenteManager->resolve($movement->account->provider);
+
+        if ($movement->type === Movement::TYPE_PIX && $movement->pixPayment) {
+            $payload = $service->simulatePixWebhook($movement->pixPayment);
+            $result = $service->processPixWebhook($payload);
+
+            $movement->pixPayment->update([
+                'status' => $result['status'],
+                'meta' => array_merge($movement->pixPayment->meta ?? [], ['webhook_payload' => $result['payload']]),
+            ]);
+
+            $movement->update([
+                'status' => $result['status'],
+                'processed_at' => now(),
+            ]);
+
+            Log::info('Simulated webhook PIX processed', ['movement_id' => $movement->id]);
+
             return;
         }
-        $wd->update(['status' => 'SUCCESS']);
-        Log::info('Simulated webhook: withdrawal success', ['withdrawal_id' => $wd->id]);
+
+        if ($movement->type === Movement::TYPE_WITHDRAW && $movement->withdrawal) {
+            $payload = $service->simulateWithdrawWebhook($movement->withdrawal);
+            $result = $service->processWithdrawWebhook($payload);
+
+            $movement->withdrawal->update([
+                'status' => $result['status'],
+                'meta' => array_merge($movement->withdrawal->meta ?? [], ['webhook_payload' => $result['payload']]),
+            ]);
+
+            $movement->update([
+                'status' => $result['status'],
+                'processed_at' => now(),
+            ]);
+
+            Log::info('Simulated webhook withdrawal processed', ['movement_id' => $movement->id]);
+        }
     }
 }

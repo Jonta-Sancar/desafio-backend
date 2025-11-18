@@ -2,19 +2,30 @@
 
 namespace App\Services\Subadquirente;
 
+use App\Models\Account;
+use App\Models\Movement;
+use App\Models\PixPayment;
+use App\Models\Withdrawal;
+
 interface SubadquirenteInterface
 {
-    /**
-     * Cria um PIX via subadquirente
-     * @param array $payload
-     * @return array
-     */
-    public function createPix(array $payload): array;
+    public function createPix(Account $account, Movement $movement, array $payload): array;
+
+    public function createWithdraw(Account $account, Movement $movement, array $payload): array;
+
+    public function simulatePixWebhook(PixPayment $pixPayment): array;
+
+    public function simulateWithdrawWebhook(Withdrawal $withdrawal): array;
 
     /**
-     * Cria um saque via subadquirente
-     * @param array $payload
-     * @return array
+     * Processa um payload real de webhook e retorna dados normalizados
+     * [
+     *   'identifier' => string,
+     *   'status' => string,
+     *   'payload' => array
+     * ]
      */
-    public function createWithdraw(array $payload): array;
+    public function processPixWebhook(array $payload): array;
+
+    public function processWithdrawWebhook(array $payload): array;
 }

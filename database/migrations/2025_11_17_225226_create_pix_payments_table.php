@@ -10,8 +10,10 @@ return new class extends Migration
     {
         Schema::create('pix_payments', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('movement_id')->constrained('movements')->cascadeOnDelete();
+            $table->foreignId('account_id')->constrained('accounts')->cascadeOnDelete();
             $table->string('pix_id')->nullable()->index();
-            $table->foreignId('user_id')->nullable()->constrained('users')->cascadeOnDelete();
+            $table->string('transaction_id')->nullable()->index();
             $table->decimal('amount', 12, 2);
             $table->string('status')->default('PENDING')->index();
             $table->json('meta')->nullable();
