@@ -22,6 +22,14 @@ class AccountFactory extends Factory
             'provider' => 'subadq_a',
             'settings' => [
                 'document' => $this->faker->numerify('###########'),
+                'merchant_id' => 'm123',
+                'seller_id' => 'm123',
+                'bank_account' => [
+                    'bank_code' => '001',
+                    'agencia' => '1234',
+                    'conta' => '00012345',
+                    'type' => 'checking',
+                ],
             ],
             'webhook_url' => 'https://example.test/webhooks',
             'webhook_secret' => Str::random(20),

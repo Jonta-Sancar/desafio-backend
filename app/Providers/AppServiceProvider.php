@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Movements\MovementService;
+use App\Services\Movements\MovementServiceInterface;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +13,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(MovementServiceInterface::class, MovementService::class);
     }
 
     /**

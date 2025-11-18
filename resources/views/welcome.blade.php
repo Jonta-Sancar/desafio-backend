@@ -1,7 +1,9 @@
 @php
+    $csrfToken = csrf_token();
+
     $stack = [
         ['label' => 'Framework', 'value' => 'Laravel 11.x'],
-        ['label' => 'Banco', 'value' => 'SQLite (padrão)'],
+        ['label' => 'Banco', 'value' => 'MySQL 8+'],
         ['label' => 'Filas', 'value' => 'Database queue + jobs'],
         ['label' => 'PHP', 'value' => '^8.2'],
     ];
@@ -10,6 +12,10 @@
         [
             'title' => 'Arquitetura contas + movimentacoes',
             'details' => 'A entidade Account amarra usuario e subadquirente. Movements registram qualquer transacao (PIX/saque) e servem de pivot para os registros especificos.'
+        ],
+        [
+            'title' => 'Servico de movimentacoes padronizado',
+            'details' => 'MovementService normaliza os dados que entram na API, injeta merchant/seller/banco a partir da conta e traduz a resposta das subadquirentes para um formato unico.'
         ],
         [
             'title' => 'Gerenciador de subadquirentes',
@@ -29,15 +35,82 @@
         [
             'method' => 'POST',
             'path' => '/api/pix',
-            'request' => '{"account_id": 1, "amount": 150.75}',
-            'response' => '{"id":1,"movement_id":10,"account_id":1,"pix_id":"PIX...","status":"PENDING","amount":"150.75"}'
+            'request' => '{"account_id": 1, "amount": 150.75, "payer": {"name": "Fulano", "cpf_cnpj": "00000000000"}}',
+            'response' => '{"pix_id":"PIX...","transaction_id":"SP_...","amount":150.75,"status":"PENDING","movement_id":10}'
         ],
         [
             'method' => 'POST',
             'path' => '/api/withdraw',
-            'request' => '{"account_id": 1, "amount": 320.10}',
-            'response' => '{"id":1,"movement_id":11,"account_id":1,"withdraw_id":"WD...","status":"PENDING"}'
+            'request' => '{"account_id": 1, "amount": 320.10, "bank_account": {"bank_code":"001","agencia":"1234","conta":"00012345","type":"checking"}}',
+            'response' => '{"withdraw_id":"WD...","transaction_id":"SP...","amount":320.10,"status":"DONE","movement_id":11}'
         ],
+    ];
+
+    $pixContract = [
+        'request' => <<<JSON
+{
+  "account_id": 1,
+  "amount": 125.5,
+  "order": "order_20251118_001",
+  "expires_in": 3600,
+  "payer": {
+    "name": "Fulano",
+    "cpf_cnpj": "00000000000"
+  }
+}
+JSON,
+        'response' => <<<JSON
+{
+  "movement_id": 10,
+  "provider": "subadq_a",
+  "pix_id": "PIX7F3C...",
+  "transaction_id": "SP_SUBADQA_30a126bf-154f-4fd7-a328-42d03c23ed12",
+  "amount": 125.5,
+  "currency": "BRL",
+  "order": "order_20251118_001",
+  "payer": {
+    "name": "Fulano",
+    "cpf_cnpj": "00000000000"
+  },
+  "expires_in": 3600,
+  "location": "https://subadqA.com/pix/loc/325",
+  "qrcode": "...",
+  "expires_at": "1763445181",
+  "status": "PENDING"
+}
+JSON,
+    ];
+
+    $withdrawContract = [
+        'request' => <<<JSON
+{
+  "account_id": 1,
+  "amount": 5000,
+  "transaction_id": "SP54127d18-e44c-4929-98fd-cf7dce2cdff2",
+  "bank_account": {
+    "bank_code": "001",
+    "agencia": "1234",
+    "conta": "00012345",
+    "type": "checking"
+  }
+}
+JSON,
+        'response' => <<<JSON
+{
+  "movement_id": 11,
+  "provider": "subadq_b",
+  "withdraw_id": "WD_ADQB_95109d5b-d499-40e2-bf43-85136b3ac4c3",
+  "transaction_id": "SP54127d18-e44c-4929-98fd-cf7dce2cdff2",
+  "amount": 5000,
+  "bank_account": {
+    "bank_code": "001",
+    "agencia": "1234",
+    "conta": "00012345",
+    "type": "checking"
+  },
+  "status": "DONE"
+}
+JSON,
     ];
 
     $webhookSteps = [
@@ -245,6 +318,12 @@
             border: 1px solid rgba(255,255,255,0.08);
         }
 
+        .token-box {
+            font-size: 1rem;
+            font-weight: 600;
+            word-break: break-all;
+        }
+
         .timeline {
             list-style: none;
             margin: 0;
@@ -300,6 +379,21 @@
             border: 1px solid rgba(255,255,255,0.08);
         }
 
+        .copy-btn {
+            background: var(--primary);
+            border: none;
+            color: var(--quaternary);
+            padding: 0.5rem 1rem;
+            border-radius: 999px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: opacity .2s ease;
+        }
+
+        .copy-btn:hover {
+            opacity: 0.85;
+        }
+
         footer {
             text-align: center;
             padding: 2rem 1.5rem;
@@ -348,6 +442,60 @@
                             <p>{{ $item['details'] }}</p>
                         </article>
                     @endforeach
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>Contrato padronizado - PIX</h2>
+                <div class="card-grid">
+                    <article class="card">
+                        <h3>Request</h3>
+                        <div class="code-block">{{ $pixContract['request'] }}</div>
+                        <p><strong>merchant_id/seller_id</strong> são recuperados do cadastro da conta. <strong>currency</strong> é sempre BRL e <strong>order</strong> é gerado automaticamente caso não seja enviado.</p>
+                    </article>
+                    <article class="card">
+                        <h3>Response</h3>
+                        <div class="code-block">{{ $pixContract['response'] }}</div>
+                        <p>Independentemente da subadquirente, a API sempre retorna este formato, incluindo qrcode, location, status e dados do pagador.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>Contrato padronizado - Saque</h2>
+                <div class="card-grid">
+                    <article class="card">
+                        <h3>Request</h3>
+                        <div class="code-block">{{ $withdrawContract['request'] }}</div>
+                        <p>Os dados bancários podem vir na requisição ou ser pré-configurados na conta. Se <code>transaction_id</code> não for informado, geramos um código prefixado com SP.</p>
+                    </article>
+                    <article class="card">
+                        <h3>Response</h3>
+                        <div class="code-block">{{ $withdrawContract['response'] }}</div>
+                        <p>O MovementService converte as respostas específicas (PROCESSING, DONE etc.) para esta estrutura única, preservando as informações essenciais.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2>Token CSRF para testes manuais</h2>
+                <div class="card-grid">
+                    <article class="card">
+                        <h3>Token atualizado</h3>
+                        <div class="code-block token-box">{{ $csrfToken }}</div>
+                        <button class="copy-btn" data-token="{{ $csrfToken }}">Copiar token</button>
+                        <p>Inclua este valor no header <code>X-CSRF-TOKEN</code> quando estiver testando via navegador ou cliente que espere ses­são.</p>
+                        <p>O token é renovado a cada carregamento desta página.</p>
+                    </article>
+                    <article class="card">
+                        <h3>Exemplo de uso via curl</h3>
+                        <div class="code-block">
+                            curl -X POST http://localhost:8000/api/pix \<br>
+                            &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+                            &nbsp;&nbsp;-H "X-CSRF-TOKEN: {{ $csrfToken }}" \<br>
+                            &nbsp;&nbsp;-d '{"account_id":1,"amount":120.50}'
+                        </div>
+                    </article>
                 </div>
             </section>
 
@@ -434,5 +582,19 @@
             Super Pagamentos - {{ now()->year }} - Documentacao do desafio backend
         </footer>
     </div>
+    <script>
+        document.querySelectorAll('.copy-btn').forEach((button) => {
+            button.addEventListener('click', () => {
+                const token = button.getAttribute('data-token');
+                if (! navigator.clipboard) {
+                    return;
+                }
+                navigator.clipboard.writeText(token).then(() => {
+                    button.textContent = 'Copiado!';
+                    setTimeout(() => (button.textContent = 'Copiar token'), 2000);
+                });
+            });
+        });
+    </script>
 </body>
 </html>

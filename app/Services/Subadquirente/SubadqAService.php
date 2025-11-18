@@ -12,32 +12,71 @@ class SubadqAService implements SubadquirenteInterface
 {
     public function createPix(Account $account, Movement $movement, array $payload): array
     {
-        $pixId = 'PIX'.strtoupper(Str::random(10));
+        $pixId = 'PIX'.strtoupper(Str::random(12));
+        $amountInCents = (int) round($payload['amount'] * 100);
+        $requestPayload = [
+            'merchant_id' => $payload['merchant_id'],
+            'amount' => $amountInCents,
+            'currency' => 'BRL',
+            'order_id' => $payload['order'],
+            'payer' => [
+                'name' => $payload['payer']['name'],
+                'cpf_cnpj' => $payload['payer']['cpf_cnpj'],
+            ],
+            'expires_in' => $payload['expires_in'],
+        ];
+
+        $locationCode = random_int(100, 999);
+        $mockedResponse = [
+            'transaction_id' => 'SP_SUBADQA_'.Str::uuid()->toString(),
+            'location' => "https://subadqA.com/pix/loc/{$locationCode}",
+            'qrcode' => '00020126530014BR.GOV.BCB.PIX0131backendtest@superpagamentos.com52040000530398654075000.005802BR5901N6001C6205050116304ACDA',
+            'expires_at' => (string) now()->addHour()->timestamp,
+            'status' => Movement::STATUS_PENDING,
+        ];
 
         return [
             'pix_id' => $pixId,
-            'transaction_id' => Str::uuid()->toString(),
-            'status' => Movement::STATUS_PENDING,
+            'transaction_id' => $mockedResponse['transaction_id'],
+            'status' => $mockedResponse['status'],
             'meta' => [
                 'subadquirente' => 'SubadqA',
                 'account_label' => $account->label,
-                'request' => $payload,
+                'request_payload' => $requestPayload,
+                'response_payload' => $mockedResponse,
             ],
         ];
     }
 
     public function createWithdraw(Account $account, Movement $movement, array $payload): array
     {
-        $withdrawId = 'WD'.strtoupper(Str::random(10));
+        $withdrawId = 'WD'.strtoupper(Str::uuid()->toString());
+        $requestPayload = [
+            'merchant_id' => $payload['merchant_id'],
+            'account' => [
+                'bank_code' => $payload['bank_account']['bank_code'],
+                'agencia' => $payload['bank_account']['agencia'],
+                'conta' => $payload['bank_account']['conta'],
+                'type' => $payload['bank_account']['type'],
+            ],
+            'amount' => (int) round($payload['amount'] * 100),
+            'transaction_id' => $payload['transaction_id'],
+        ];
+
+        $responsePayload = [
+            'withdraw_id' => $withdrawId,
+            'status' => 'PROCESSING',
+        ];
 
         return [
             'withdraw_id' => $withdrawId,
-            'transaction_id' => Str::uuid()->toString(),
-            'status' => Movement::STATUS_PENDING,
+            'transaction_id' => $payload['transaction_id'],
+            'status' => 'PROCESSING',
             'meta' => [
                 'subadquirente' => 'SubadqA',
                 'account_label' => $account->label,
-                'request' => $payload,
+                'request_payload' => $requestPayload,
+                'response_payload' => $responsePayload,
             ],
         ];
     }
@@ -50,8 +89,8 @@ class SubadqAService implements SubadquirenteInterface
             'pix_id' => $pixPayment->pix_id,
             'status' => 'CONFIRMED',
             'amount' => (float) $pixPayment->amount,
-            'payer_name' => data_get($pixPayment->meta, 'request.payer_name', 'Cliente SubadqA'),
-            'payer_cpf' => data_get($pixPayment->meta, 'request.payer_cpf', '12345678900'),
+            'payer_name' => data_get($pixPayment->meta, 'normalized_request.payer.name', 'Cliente SubadqA'),
+            'payer_cpf' => data_get($pixPayment->meta, 'normalized_request.payer.cpf_cnpj', '12345678900'),
             'payment_date' => now()->toIso8601String(),
             'metadata' => [
                 'source' => 'SubadqA',
@@ -72,7 +111,7 @@ class SubadqAService implements SubadquirenteInterface
             'completed_at' => now()->toIso8601String(),
             'metadata' => [
                 'source' => 'SubadqA',
-                'destination_bank' => data_get($withdrawal->meta, 'request.bank', '0001'),
+                'destination_bank' => data_get($withdrawal->meta, 'normalized_request.bank_account.bank_code', '0001'),
             ],
         ];
     }
