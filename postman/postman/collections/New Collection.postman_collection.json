@@ -1,0 +1,131 @@
+{
+  "info": {
+    "_postman_id": "67f72fd9-6059-43a5-a6fe-36fc34b0c97c",
+    "name": "desafio-super-backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "saque",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "xSV0sacx36HsrU8iVmw418cWIzGDXSxw3kfjjwVPd70878c5",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-CSRF-TOKEN",
+            "value": "xhuEu57QmCAxu06F5RG2sxI9CgaBgYLYbETO7s1r",
+            "type": "text",
+            "uuid": "ea5e1ddd-f5c8-47c5-8b94-5f37e78fae58",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"account_id\": 1, \"amount\": 320.10, \"bank_account\": {\"bank_code\":\"001\",\"agencia\":\"1234\",\"conta\":\"00012345\",\"type\":\"checking\"}}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/api/withdraw",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "withdraw"
+          ]
+        }
+      }
+    },
+    {
+      "name": "saldo",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "xSV0sacx36HsrU8iVmw418cWIzGDXSxw3kfjjwVPd70878c5",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8000/api/accounts/1/balance",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "accounts",
+            "1",
+            "balance"
+          ]
+        }
+      }
+    },
+    {
+      "name": "PIX",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "c67pmW6aL7pHZ67OVQFQrQIzOLY0u90qyJdE8qZKec9c3fca",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-CSRF-TOKEN",
+            "value": "xhuEu57QmCAxu06F5RG2sxI9CgaBgYLYbETO7s1r",
+            "type": "text",
+            "uuid": "ea5e1ddd-f5c8-47c5-8b94-5f37e78fae58",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"account_id\": 1,\r\n  \"amount\": 125.50,\r\n  \"order\": \"order_20251118_001\",\r\n  \"payer\": {\r\n    \"name\": \"Fulano\",\r\n    \"cpf_cnpj\": \"00000000000\"\r\n  }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/api/pix",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "pix"
+          ]
+        }
+      }
+    }
+  ]
+}

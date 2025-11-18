@@ -60,7 +60,7 @@ Essa abordagem garante que **novas subadquirentes** sejam adicionadas implementa
 ## Contratos de API
 
 ### `POST /api/pix`
-```jsonc
+```json
 {
   "account_id": 1,
   "amount": 125.50,
